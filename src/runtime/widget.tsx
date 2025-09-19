@@ -2,8 +2,25 @@
 import { React, AllWidgetProps, jsx, css, type SerializedStyles } from 'jimu-core'
 import { type IMConfig } from './config'
 
-export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>, unknown> {
+type State = {
+  iconSize: number
+}
+
+export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>, State> {
   pollingInterval?: number
+  resizeObserver?: ResizeObserver
+  widgetRef = React.createRef<HTMLDivElement>()
+
+  private getBaseIconSize (config: IMConfig): number {
+    const width = config.iconWidth ?? config.iconHeight ?? 50
+    const height = config.iconHeight ?? config.iconWidth ?? 50
+    const baseSize = Math.max(Math.min(width, height), 1)
+    return baseSize
+  }
+
+  state: State = {
+    iconSize: this.getBaseIconSize(this.props.config)
+  }
 
   getAlignmentStyles = (alignment: string): { justifyContent: string, alignItems: string } => {
     if (!alignment || alignment === 'center') {
@@ -20,11 +37,17 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
 
   componentDidMount (): void {
     this.startPolling()
+    this.startResizeObserver()
+    this.updateResponsiveSize()
   }
 
   componentDidUpdate (prevProps: AllWidgetProps<IMConfig>): void {
     if (prevProps.config.sourceWidgetId !== this.props.config.sourceWidgetId) {
       this.startPolling()
+    }
+
+    if (prevProps.config !== this.props.config) {
+      this.updateResponsiveSize()
     }
   }
 
@@ -32,6 +55,11 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
     if (this.pollingInterval) {
       window.clearInterval(this.pollingInterval)
     }
+
+    if (this.resizeObserver && this.widgetRef.current) {
+      this.resizeObserver.unobserve(this.widgetRef.current)
+    }
+    this.resizeObserver?.disconnect()
   }
 
   startPolling = (): void => {
@@ -79,10 +107,42 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
     targetNode.style.backgroundColor = bg
   }
 
+  startResizeObserver = (): void => {
+    if (!this.widgetRef.current) {
+      return
+    }
+
+    this.resizeObserver = new ResizeObserver(() => {
+      this.updateResponsiveSize()
+    })
+    this.resizeObserver.observe(this.widgetRef.current)
+  }
+
+  updateResponsiveSize = (): void => {
+    const container = this.widgetRef.current
+    if (!container) {
+      return
+    }
+
+    const { config } = this.props
+    const rect = container.getBoundingClientRect()
+    const padding = config.padding ?? 0
+    const availableWidth = Math.max(rect.width - padding * 2, 0)
+    const availableHeight = Math.max(rect.height - padding * 2, 0)
+    const fallbackSize = this.getBaseIconSize(config)
+    const hasSpace = availableWidth > 0 && availableHeight > 0
+    const nextSize = hasSpace ? Math.min(availableWidth, availableHeight) : fallbackSize
+
+    if (Math.abs(this.state.iconSize - nextSize) > 0.5) {
+      this.setState({ iconSize: nextSize })
+    }
+  }
+
   getStyle = (): SerializedStyles => {
     const { config } = this.props
     const iconAlignment = config.iconAlignment ?? 'center'
     const { justifyContent, alignItems } = this.getAlignmentStyles(iconAlignment)
+    const iconSize = this.state.iconSize
 
     return css`
       & {
@@ -95,19 +155,20 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
         align-items: ${alignItems};
         justify-content: ${justifyContent};
       }
-      
+
       .icon-box {
-        width: ${config.iconWidth ?? 50}px;
-        height: ${config.iconHeight ?? 50}px;
+        width: ${iconSize}px;
+        height: ${iconSize}px;
         background-color: ${config.backgroundColor ?? 'transparent'};
         padding: ${config.padding ?? 0}px;
         border-radius: ${config.borderRadius ?? 0}px;
-        
+
         display: flex;
         align-items: center;
         justify-content: center;
         max-width: 100%;
         max-height: 100%;
+        aspect-ratio: 1 / 1;
       }
 
       .icon-box svg {
@@ -128,6 +189,7 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
       <div
         className={`svg-icon-widget widget-${id}`}
         css={this.getStyle()}
+        ref={this.widgetRef}
         title="Custom SVG Icon"
       >
         <div
