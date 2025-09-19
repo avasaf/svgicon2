@@ -11,15 +11,15 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
   resizeObserver?: ResizeObserver
   widgetRef = React.createRef<HTMLDivElement>()
 
-  state: State = {
-    iconSize: this.getBaseIconSize(this.props.config)
-  }
-
-  getBaseIconSize = (config: IMConfig): number => {
+  private getBaseIconSize (config: IMConfig): number {
     const width = config.iconWidth ?? config.iconHeight ?? 50
     const height = config.iconHeight ?? config.iconWidth ?? 50
     const baseSize = Math.max(Math.min(width, height), 1)
     return baseSize
+  }
+
+  state: State = {
+    iconSize: this.getBaseIconSize(this.props.config)
   }
 
   getAlignmentStyles = (alignment: string): { justifyContent: string, alignItems: string } => {
